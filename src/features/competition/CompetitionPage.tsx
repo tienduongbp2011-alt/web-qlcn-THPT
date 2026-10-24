@@ -217,9 +217,10 @@ export const CompetitionPage: React.FC = () => {
     ]
   );
 
-  // Recent competition records filtered for view
+  // Recent competition records filtered for view (không hiển thị các lượt đã hoàn tác)
   const visibleRecords = useMemo(() => {
     return state.competitionRecords.filter((rec) => {
+      if (rec.isDeleted) return false;
       if (isLeaderMode && dutyTargetGroup) {
         return rec.groupId === dutyTargetGroup.id;
       }
@@ -353,11 +354,18 @@ export const CompetitionPage: React.FC = () => {
       'Tổ': st.groupName,
       'Chức vụ': st.position,
       'Điểm gốc': st.initialScore,
-      'Tổng điểm cộng': st.bonusPoints,
-      'Tổng điểm trừ': st.penaltyPoints,
-      'Hiệu số trong kỳ': st.netPeriodPoints,
-      'Tổng điểm cuối kỳ': st.finalScore,
-      'Ghi chú lỗi vi phạm': st.violationSummary.join('; ') || 'Không vi phạm',
+      'Điểm cộng': st.bonusPoints,
+      'Điểm trừ': st.penaltyPoints,
+      'Điểm tổng (= Điểm gốc + Điểm cộng - Điểm trừ)': st.finalScore,
+      'Ghi chú tiêu chí Cộng & Trừ (nếu có)':
+        [
+          ...(st.bonusSummary && st.bonusSummary.length > 0
+            ? [`Cộng: ${st.bonusSummary.join('; ')}`]
+            : []),
+          ...(st.violationSummary.length > 0
+            ? [`Trừ: ${st.violationSummary.join('; ')}`]
+            : []),
+        ].join(' | ') || 'Chưa phát sinh',
     }));
     exportToExcelFile(
       rows,
@@ -789,15 +797,15 @@ export const CompetitionPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Lịch sử chấm thi đua gần đây & Nút Hoàn tác / Xóa khi chấm nhầm */}
+          {/* Lịch sử chấm thi đua gần đây & Nút Hoàn tác / Sửa */}
           <div className="crystal-card rounded-2xl p-5">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div>
                 <h3 className="text-base font-bold text-[#0D47A1]">
-                  Nhật ký các lượt chấm thi đua gần đây (Có nút Hoàn tác / Xóa khi chấm nhầm & Lưu lịch sử sửa)
+                  Nhật ký các lượt chấm thi đua gần đây
                 </h3>
                 <p className="text-xs text-[#64748B]">
-                  Mọi thao tác sửa hoặc hoàn tác khi chấm nhầm đều được ghi nhận minh bạch kèm lý do.
+                  Chỉ khi bấm <strong>Sửa</strong> mới ghi lịch sử vào nhật ký; nếu bấm <strong>Hoàn tác</strong> thì lượt chấm nhầm được gỡ bỏ hoàn toàn và không ghi vào nhật ký.
                 </p>
               </div>
             </div>
@@ -826,14 +834,7 @@ export const CompetitionPage: React.FC = () => {
                     );
                     const grp = state.groups.find((g) => g.id === rec.groupId);
                     return (
-                      <tr
-                        key={rec.id}
-                        className={
-                          rec.isDeleted
-                            ? 'bg-slate-100 text-[#64748B] line-through'
-                            : 'hover:bg-[#F4FAFF]'
-                        }
-                      >
+                      <tr key={rec.id} className="hover:bg-[#F4FAFF]">
                         <td className="py-2.5 px-3 text-xs tabular-nums">
                           {formatVietnameseDate(rec.date)}
                         </td>
@@ -867,7 +868,7 @@ export const CompetitionPage: React.FC = () => {
                           )}
                           {rec.editHistory && rec.editHistory.length > 0 && (
                             <div className="text-[11px] text-[#0D47A1] mt-0.5">
-                              Đã chỉnh sửa ({rec.editHistory.length} lần) – Lý do:{' '}
+                              Đã sửa ({rec.editHistory.length} lần) – Lý do:{' '}
                               {rec.editHistory[0].reason}
                             </div>
                           )}
@@ -876,36 +877,30 @@ export const CompetitionPage: React.FC = () => {
                           {rec.recordedBy}
                         </td>
                         <td className="py-2.5 px-3 text-center">
-                          {!rec.isDeleted ? (
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => openEditRecordModal(rec)}
-                                className="px-2 py-1 rounded border border-[#D7EAFE] text-xs font-bold text-[#0D47A1] hover:bg-[#E3F2FD]"
-                                title="Sửa bản ghi và lưu lịch sử"
-                              >
-                                Sửa
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  deleteOrUndoCompetitionRecord(
-                                    rec.id,
-                                    'Chấm nhầm / Hoàn tác trực tiếp'
-                                  )
-                                }
-                                className="px-2 py-1 rounded bg-red-50 border border-red-200 text-xs font-bold text-[#DC2626] hover:bg-red-100 flex items-center gap-1"
-                                title="Hoàn tác hoặc xóa lượt chấm nhầm này"
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                                <span>Hoàn tác</span>
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-[#DC2626] font-semibold">
-                              Đã hoàn tác
-                            </span>
-                          )}
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openEditRecordModal(rec)}
+                              className="px-2 py-1 rounded border border-[#D7EAFE] text-xs font-bold text-[#0D47A1] hover:bg-[#E3F2FD]"
+                              title="Sửa bản ghi và lưu vào nhật ký"
+                            >
+                              Sửa
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                deleteOrUndoCompetitionRecord(
+                                  rec.id,
+                                  'Hoàn tác trực tiếp'
+                                )
+                              }
+                              className="px-2 py-1 rounded bg-red-50 border border-red-200 text-xs font-bold text-[#DC2626] hover:bg-red-100 flex items-center gap-1"
+                              title="Hoàn tác lượt chấm nhầm (gỡ bỏ khỏi danh sách và không ghi vào nhật ký)"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>Hoàn tác</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1082,9 +1077,14 @@ export const CompetitionPage: React.FC = () => {
           {/* Bảng xếp hạng Cá nhân */}
           <div className="crystal-card rounded-2xl p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-              <h3 className="text-lg font-bold text-[#0D47A1]">
-                Bảng Xếp Hạng Thi Đua Cá Nhân ({studentRankings.length} học sinh)
-              </h3>
+              <div>
+                <h3 className="text-lg font-bold text-[#0D47A1]">
+                  Bảng Xếp Hạng Thi Đua Cá Nhân ({studentRankings.length} học sinh)
+                </h3>
+                <p className="text-xs text-[#64748B]">
+                  Cách tính Điểm tổng = <strong>Điểm gốc + Điểm cộng - Điểm trừ</strong>
+                </p>
+              </div>
               <div className="flex items-center gap-2 no-print">
                 <select
                   value={rankingGroupFilter}
@@ -1125,57 +1125,64 @@ export const CompetitionPage: React.FC = () => {
                     <th className="py-2.5 px-3 font-bold text-right">Điểm cộng</th>
                     <th className="py-2.5 px-3 font-bold text-right">Điểm trừ</th>
                     <th className="py-2.5 px-3 font-bold text-right">
-                      Điểm kỳ
-                    </th>
-                    <th className="py-2.5 px-3 font-bold text-right">
-                      Tổng điểm
+                      Điểm tổng
                     </th>
                     <th className="py-2.5 px-3 font-bold">
-                      Ghi chú lỗi vi phạm (nếu có)
+                      Ghi chú lỗi vi phạm (nếu có) / Tiêu chí Cộng & Trừ
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#D7EAFE]">
-                  {studentRankings.map((st) => (
-                    <tr key={st.studentId} className="hover:bg-[#F4FAFF]">
-                      <td className="py-2.5 px-3 font-bold text-[#0D47A1] tabular-nums">
-                        #{st.rank}
-                      </td>
-                      <td className="py-2.5 px-3 text-xs font-bold text-[#64748B] tabular-nums">
-                        {st.studentCode}
-                      </td>
-                      <td className="py-2.5 px-3 font-bold text-[#17365D]">
-                        {st.fullName}
-                      </td>
-                      <td className="py-2.5 px-3 text-xs">{st.groupName}</td>
-                      <td className="py-2.5 px-3 text-right text-[#64748B] tabular-nums">
-                        {st.initialScore}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-[#16A34A] tabular-nums">
-                        +{st.bonusPoints}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-[#DC2626] tabular-nums">
-                        -{st.penaltyPoints}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold tabular-nums">
-                        {st.netPeriodPoints >= 0
-                          ? `+${st.netPeriodPoints}`
-                          : st.netPeriodPoints}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-[#0D47A1] tabular-nums">
-                        {st.finalScore}đ
-                      </td>
-                      <td className="py-2.5 px-3 text-xs">
-                        {st.violationSummary.length > 0 ? (
-                          <span className="text-[#DC2626]">
-                            {st.violationSummary.join('; ')}
-                          </span>
-                        ) : (
-                          <span className="text-[#16A34A]">Không vi phạm</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {studentRankings.map((st) => {
+                    const hasBonus =
+                      st.bonusSummary && st.bonusSummary.length > 0;
+                    const hasViolation = st.violationSummary.length > 0;
+                    return (
+                      <tr key={st.studentId} className="hover:bg-[#F4FAFF]">
+                        <td className="py-2.5 px-3 font-bold text-[#0D47A1] tabular-nums">
+                          #{st.rank}
+                        </td>
+                        <td className="py-2.5 px-3 text-xs font-bold text-[#64748B] tabular-nums">
+                          {st.studentCode}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-[#17365D]">
+                          {st.fullName}
+                        </td>
+                        <td className="py-2.5 px-3 text-xs">{st.groupName}</td>
+                        <td className="py-2.5 px-3 text-right text-[#64748B] tabular-nums">
+                          {st.initialScore}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-[#16A34A] tabular-nums">
+                          +{st.bonusPoints}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-[#DC2626] tabular-nums">
+                          -{st.penaltyPoints}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-[#0D47A1] tabular-nums">
+                          {st.finalScore}đ
+                        </td>
+                        <td className="py-2.5 px-3 text-xs space-y-1">
+                          {hasBonus && (
+                            <div className="text-[#16A34A] font-medium">
+                              <strong>Tiêu chí cộng:</strong>{' '}
+                              {st.bonusSummary!.join('; ')}
+                            </div>
+                          )}
+                          {hasViolation && (
+                            <div className="text-[#DC2626] font-medium">
+                              <strong>Tiêu chí trừ:</strong>{' '}
+                              {st.violationSummary.join('; ')}
+                            </div>
+                          )}
+                          {!hasBonus && !hasViolation && (
+                            <span className="text-[#64748B]">
+                              Chưa phát sinh tiêu chí cộng/trừ
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

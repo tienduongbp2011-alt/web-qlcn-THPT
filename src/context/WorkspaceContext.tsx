@@ -968,43 +968,48 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
     showToast('Đã cập nhật bản ghi thi đua và lưu lịch sử thay đổi.', 'success');
   };
 
-  // Yêu cầu 6.1: "khi tổ trưởng chấm sai, chấm nhầm có nút chức năng xoá hoặc hoàn tác"
-  const deleteOrUndoCompetitionRecord = (recordId: string, reason: string) => {
+  // Yêu cầu: "nhật ký các lượt chấm thi đua gần đây nếu hoàn tác thì không ghi vào nhật ký, chỉ có sửa mới ghi vào nhật ký"
+  const deleteOrUndoCompetitionRecord = (recordId: string, _reason: string) => {
     setState((prev) => {
       const target = prev.competitionRecords.find((r) => r.id === recordId);
       if (!target) return prev;
-      const st = prev.students.find((s) => s.id === target.studentId);
-      const log = createLogItem(
-        'Thi đua 4 tổ',
-        'Hoàn tác / Xóa bản ghi chấm nhầm',
-        `Hoàn tác bản ghi "${target.criteriaName}" (${target.totalPoints}đ) của HS ${
-          st?.fullName || target.studentId
-        }. Lý do: ${reason}`
-      );
+
+      // Xóa hẳn lượt chấm nhầm khỏi danh sách nhật ký chấm thi đua
+      const remaining = prev.competitionRecords.filter((r) => r.id !== recordId);
+
+      // Cập nhật lại hệ số (1x, 2x, 3x...) theo thứ tự cho các lượt chấm còn lại của cùng học sinh & cùng tiêu chí
+      const matchingChronological = remaining
+        .filter(
+          (r) =>
+            !r.isDeleted &&
+            !/^rec-\d+$/.test(r.id) &&
+            r.studentId === target.studentId &&
+            r.criteriaId === target.criteriaId
+        )
+        .slice()
+        .reverse();
+
+      const multMap = new Map<string, number>();
+      matchingChronological.forEach((r, idx) => {
+        multMap.set(r.id, idx + 1);
+      });
+
+      const recalculated = remaining.map((r) => {
+        const newMult = multMap.get(r.id);
+        if (!newMult || newMult === r.multiplier) return r;
+        return {
+          ...r,
+          multiplier: newMult,
+          totalPoints: r.basePoints * newMult,
+        };
+      });
+
       return {
         ...prev,
-        competitionRecords: prev.competitionRecords.map((r) =>
-          r.id === recordId
-            ? {
-                ...r,
-                isDeleted: true,
-                deletedReason: reason,
-                editHistory: [
-                  {
-                    editedAt: new Date().toLocaleString('vi-VN'),
-                    editedBy: `${sessionRole.actorName} (${sessionRole.role})`,
-                    reason: `Hoàn tác/Xóa: ${reason}`,
-                    previousSummary: `${r.criteriaName} (${r.totalPoints}đ)`,
-                  },
-                  ...(r.editHistory || []),
-                ],
-              }
-            : r
-        ),
-        auditLogs: [log, ...prev.auditLogs],
+        competitionRecords: recalculated,
       };
     });
-    showToast('Đã hoàn tác / xóa bản ghi chấm nhầm và cập nhật lại điểm số.', 'info');
+    showToast('Đã hoàn tác lượt chấm và cập nhật lại điểm số.', 'info');
   };
 
   const setGroupScoringMode = (mode: 'SUM' | 'AVERAGE') => {

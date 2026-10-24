@@ -220,22 +220,28 @@ export const ReportsPage: React.FC = () => {
   };
 
   const handleExportReportExcel = () => {
-    const rows = sortedStudents.map((st) => ({
-      'Thứ hạng': st.rank,
-      'Mã học sinh': st.studentCode,
-      'Họ và tên': st.fullName,
-      'Tổ': st.groupName,
-      'Chức vụ': st.position,
-      'Điểm ban đầu': st.initialScore,
-      'Tổng điểm cộng': st.bonusPoints,
-      'Tổng điểm trừ': st.penaltyPoints,
-      'Hiệu số kỳ': st.netPeriodPoints,
-      'Tổng điểm cuối kỳ': st.finalScore,
-      'Ghi chú lỗi vi phạm (nếu có)':
-        st.violationSummary.length > 0
-          ? st.violationSummary.join('; ')
-          : 'Không có vi phạm',
-    }));
+    const rows = sortedStudents.map((st) => {
+      const notesList: string[] = [];
+      if (st.bonusSummary && st.bonusSummary.length > 0) {
+        notesList.push(`Cộng: ${st.bonusSummary.join('; ')}`);
+      }
+      if (st.violationSummary.length > 0) {
+        notesList.push(`Trừ: ${st.violationSummary.join('; ')}`);
+      }
+      return {
+        'Thứ hạng': st.rank,
+        'Mã học sinh': st.studentCode,
+        'Họ và tên': st.fullName,
+        'Tổ': st.groupName,
+        'Chức vụ': st.position,
+        'Điểm gốc': st.initialScore,
+        'Điểm cộng': st.bonusPoints,
+        'Điểm trừ': st.penaltyPoints,
+        'Điểm tổng (= Điểm gốc + Cộng - Trừ)': st.finalScore,
+        'Ghi chú lỗi vi phạm (nếu có)':
+          notesList.length > 0 ? notesList.join(' | ') : 'Chưa phát sinh',
+      };
+    });
     exportToExcelFile(
       rows,
       'DanhSachCaNhanXuatSac',
@@ -433,16 +439,23 @@ export const ReportsPage: React.FC = () => {
                     <td className="py-2.5 px-3 text-right font-bold text-[#0D47A1] tabular-nums">
                       {st.finalScore}đ
                     </td>
-                    <td className="py-2.5 px-3 text-xs">
-                      {st.violationSummary.length > 0 ? (
-                        <span className="text-[#DC2626] font-semibold">
-                          {st.violationSummary.join('; ')}
-                        </span>
-                      ) : (
-                        <span className="text-[#16A34A]">
-                          Không có lỗi vi phạm
-                        </span>
+                    <td className="py-2.5 px-3 text-xs space-y-1">
+                      {st.bonusSummary && st.bonusSummary.length > 0 && (
+                        <div className="text-[#16A34A] font-semibold">
+                          + Tiêu chí cộng: {st.bonusSummary.join('; ')}
+                        </div>
                       )}
+                      {st.violationSummary.length > 0 && (
+                        <div className="text-[#DC2626] font-semibold">
+                          - Tiêu chí trừ: {st.violationSummary.join('; ')}
+                        </div>
+                      )}
+                      {(!st.bonusSummary || st.bonusSummary.length === 0) &&
+                        st.violationSummary.length === 0 && (
+                          <span className="text-[#64748B]">
+                            Chưa phát sinh tiêu chí cộng/trừ
+                          </span>
+                        )}
                     </td>
                     <td className="py-2.5 px-3 text-center no-print">
                       <button

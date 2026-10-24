@@ -167,6 +167,7 @@ export interface StudentRankingItem {
   finalScore: number; // initialScore + netPeriodPoints
   bonusCount: number;
   violationCount: number;
+  bonusSummary?: string[];
   violationSummary: string[];
   rank: number;
 }

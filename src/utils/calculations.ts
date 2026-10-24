@@ -111,8 +111,9 @@ export function formatCurrencyVND(amount: number): string {
 }
 
 /**
- * Tính hệ số nhân (1x, 2x, 3x...) khi cùng 1 học sinh tái phạm / lặp lại cùng 1 tiêu chí
- * Yêu cầu 6.3: "Học sinh nếu 1 tiêu chí được lặp lại từ 2 lần trở lên thì hệ số sẽ cộng 1x, 2x, 3x... sau mỗi lần tổ trưởng nhấp nút chấm điểm tiêu chí cho cá nhân"
+ * Tính hệ số nhân (1x, 2x, 3x...) khi cùng 1 học sinh được chấm lặp lại nhiều lần ở CÙNG 1 tiêu chí
+ * - Mỗi lần chọn 1 Tiêu chí (TC) để chấm cho thành viên chưa chấm TC đó -> luôn bắt đầu ở hệ số 1x (bỏ qua các bản ghi mẫu có sẵn rec-01..rec-13).
+ * - Chỉ khi chính thành viên đó được chấm nhiều lần ở cùng 1 Tiêu chí đó thì mới tự động tăng lên 2x, 3x...
  */
 export function calculateNextMultiplier(
   existingRecords: CompetitionRecord[],
@@ -121,20 +122,19 @@ export function calculateNextMultiplier(
   startDate?: string,
   endDate?: string
 ): number {
-  const validOccurrences = existingRecords.filter(
-    (r) =>
-      !r.isDeleted &&
-      r.studentId === studentId &&
-      r.criteriaId === criteriaId &&
-      isDateInRange(r.date, startDate, endDate)
-  ).length;
+  const validOccurrences = existingRecords.filter((r) => {
+    if (r.isDeleted) return false;
+    // Bỏ qua các bản ghi dữ liệu mẫu (rec-01 .. rec-13) để khi người dùng chọn bất kỳ TC nào lần đầu cũng luôn ở hệ số 1x
+    if (/^rec-\d+$/.test(r.id)) return false;
+    if (r.studentId !== studentId || r.criteriaId !== criteriaId) return false;
+    return isDateInRange(r.date, startDate, endDate);
+  }).length;
   return validOccurrences + 1;
 }
 
 /**
  * Tính bảng xếp hạng cá nhân theo khoảng thời gian
- * Công thức 6.4: Điểm thi đua cá nhân = Tổng điểm cộng hợp lệ - Tổng điểm trừ hợp lệ trong kỳ.
- * Điểm tích lũy = Điểm ban đầu (100) + Điểm thi đua cá nhân trong kỳ.
+ * Công thức: Điểm tổng = Điểm gốc + Điểm cộng - Điểm trừ
  */
 export function calculateStudentRankings(
   students: Student[],
@@ -172,12 +172,16 @@ export function calculateStudentRankings(
     let penaltyPoints = 0;
     let bonusCount = 0;
     let violationCount = 0;
+    const bonusSummary: string[] = [];
     const violationSummary: string[] = [];
 
     for (const rec of stRecords) {
       if (rec.totalPoints >= 0) {
         bonusPoints += rec.totalPoints;
         bonusCount += 1;
+        bonusSummary.push(
+          `${rec.criteriaName} (${rec.multiplier > 1 ? `${rec.multiplier}x: ` : ''}+${rec.totalPoints}đ - ${formatVietnameseDate(rec.date)})`
+        );
       } else {
         const absPenalty = Math.abs(rec.totalPoints);
         penaltyPoints += absPenalty;
@@ -188,8 +192,10 @@ export function calculateStudentRankings(
       }
     }
 
+    const initialScore = st.initialScore ?? 100;
     const netPeriodPoints = bonusPoints - penaltyPoints;
-    const finalScore = (st.initialScore ?? 100) + netPeriodPoints;
+    // Điểm tổng = Điểm gốc + Điểm cộng - Điểm trừ
+    const finalScore = initialScore + bonusPoints - penaltyPoints;
 
     return {
       studentId: st.id,
@@ -198,13 +204,14 @@ export function calculateStudentRankings(
       groupId: st.groupId,
       groupName: groupNameMap.get(st.groupId) || st.groupId,
       position: st.position,
-      initialScore: st.initialScore ?? 100,
+      initialScore,
       bonusPoints,
       penaltyPoints,
       netPeriodPoints,
       finalScore,
       bonusCount,
       violationCount,
+      bonusSummary,
       violationSummary,
       rank: 0,
     };
