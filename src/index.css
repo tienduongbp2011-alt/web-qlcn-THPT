@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #0D47A1;
+  --primary-light: #42A5F5;
+  --primary-soft: #E3F2FD;
+  --background: #F4FAFF;
+  --surface: #FFFFFF;
+  --accent: #FF8A00;
+  --success: #16A34A;
+  --danger: #DC2626;
+  --text-primary: #17365D;
+  --text-secondary: #64748B;
+  --border: #D7EAFE;
+}
+
+* {
+  font-family: "Times New Roman", Times, serif !important;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--text-primary);
+  font-family: "Times New Roman", Times, serif;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.crystal-card {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px -4px rgba(13, 71, 161, 0.06);
+}
+
+@media print {
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  table {
+    page-break-inside: auto;
+    border-collapse: collapse;
+    width: 100%;
+  }
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tfoot {
+    display: table-footer-group;
+  }
+}

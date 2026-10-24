@@ -1,0 +1,6 @@
+{
+  "name": "THANH HÒA CLASS MANAGER",
+  "description": "Hệ thống quản lý lớp chủ nhiệm, thi đua 4 tổ, chuyên cần, tài chính và khen thưởng dành cho giáo viên THPT - Trường THPT Thanh Hòa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
