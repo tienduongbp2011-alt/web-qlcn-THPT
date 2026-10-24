@@ -1,6 +1,7 @@
 import React from 'react';
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext.tsx';
 import { MainLayout } from './layouts/MainLayout.tsx';
+import { LoginPage } from './features/auth/LoginPage.tsx';
 import { DashboardPage } from './features/dashboard/DashboardPage.tsx';
 import { StudentsPage } from './features/students/StudentsPage.tsx';
 import { CompetitionPage } from './features/competition/CompetitionPage.tsx';
@@ -40,12 +41,25 @@ const ModuleRouter: React.FC = () => {
   }
 };
 
+const AuthenticatedApp: React.FC = () => {
+  const { isAuthenticated } = useWorkspace();
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  return (
+    <MainLayout>
+      <ModuleRouter />
+    </MainLayout>
+  );
+};
+
 export default function App() {
   return (
     <WorkspaceProvider>
-      <MainLayout>
-        <ModuleRouter />
-      </MainLayout>
+      <AuthenticatedApp />
     </WorkspaceProvider>
   );
 }
+

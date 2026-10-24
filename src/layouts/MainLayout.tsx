@@ -88,13 +88,11 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({
     setActiveModule,
     sessionRole,
     setSessionRole,
-    firebaseUser,
+    logoutSession,
     syncMessage,
     supabaseStatus,
     syncNowWithSupabase,
     toastMessage,
-    loginWithGoogle,
-    logoutUser,
     clearDemoData,
   } = useWorkspace();
 
@@ -258,74 +256,70 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({
               </span>
             </div>
 
-            {/* Role Switcher (GVCN vs Tổ trưởng trực thi đua) */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setRoleSwitcherOpen(!roleSwitcherOpen)}
-                className="px-3 py-1.5 rounded-lg border border-[#D7EAFE] bg-[#E3F2FD]/60 hover:bg-[#E3F2FD] text-xs font-bold text-[#0D47A1] flex items-center gap-1.5 transition-colors whitespace-nowrap"
-                title="Chuyển đổi quyền truy cập (GVCN / Tổ trưởng trực thi đua)"
-              >
+            {/* Role Badge / Role Switcher (GVCN only can switch preview; TO_TRUONG is locked to their duty group) */}
+            {sessionRole.role === 'TO_TRUONG' ? (
+              <div className="px-3 py-1.5 rounded-lg border border-[#D7EAFE] bg-[#E3F2FD]/60 text-xs font-bold text-[#0D47A1] flex items-center gap-1.5 whitespace-nowrap">
                 <ShieldCheck className="w-4 h-4 text-[#0D47A1]" />
-                <span>
-                  Quyền: {sessionRole.role === 'GVCN' ? 'GVCN' : sessionRole.role === 'TO_TRUONG' ? 'Tổ trưởng trực' : 'Quản trị'}
-                </span>
-              </button>
+                <span>Tài khoản: Tổ trưởng trực thi đua</span>
+              </div>
+            ) : (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setRoleSwitcherOpen(!roleSwitcherOpen)}
+                  className="px-3 py-1.5 rounded-lg border border-[#D7EAFE] bg-[#E3F2FD]/60 hover:bg-[#E3F2FD] text-xs font-bold text-[#0D47A1] flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                  title="Kiểm tra nhanh giao diện Tổ trưởng (Chỉ dành cho GVCN)"
+                >
+                  <ShieldCheck className="w-4 h-4 text-[#0D47A1]" />
+                  <span>
+                    Quyền: {sessionRole.role === 'GVCN' ? 'GVCN (Toàn quyền)' : 'Quản trị'}
+                  </span>
+                </button>
 
-              {roleSwitcherOpen && (
-                <div className="absolute right-0 mt-2 w-72 rounded-xl bg-white border border-[#D7EAFE] shadow-xl p-3 z-50">
-                  <div className="text-xs font-bold text-[#0D47A1] mb-2 pb-1.5 border-b border-[#D7EAFE]">
-                    CHẾ ĐỘ PHÂN QUYỀN TRUY CẬP
-                  </div>
-                  <div className="space-y-1.5 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectRole('GVCN')}
-                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${
-                        sessionRole.role === 'GVCN'
-                          ? 'bg-[#0D47A1] text-white font-bold'
-                          : 'hover:bg-[#E3F2FD] text-[#17365D]'
-                      }`}
-                    >
-                      <span>GVCN: Nguyễn Tiến Dương (Toàn quyền)</span>
-                    </button>
-
-                    <div className="pt-1 text-[11px] text-[#64748B] font-semibold px-1">
-                      Tài khoản Tổ trưởng trực chéo (Chỉ được chấm tổ được phân công):
+                {roleSwitcherOpen && (
+                  <div className="absolute right-0 mt-2 w-72 rounded-xl bg-white border border-[#D7EAFE] shadow-xl p-3 z-50">
+                    <div className="text-xs font-bold text-[#0D47A1] mb-2 pb-1.5 border-b border-[#D7EAFE]">
+                      CHẾ ĐỘ XEM THỬ CỦA GVCN
                     </div>
-                    {state.groups.map((grp) => {
-                      const targetGrp = state.groups.find(
-                        (g) => g.id === grp.dutyTargetGroupId
-                      );
-                      const isSelected =
-                        sessionRole.role === 'TO_TRUONG' &&
-                        sessionRole.groupId === grp.id;
-                      return (
-                        <button
-                          key={grp.id}
-                          type="button"
-                          onClick={() => handleSelectRole('TO_TRUONG', grp.id)}
-                          className={`w-full text-left px-3 py-1.5 rounded-lg transition-colors flex items-center justify-between ${
-                            isSelected
-                              ? 'bg-[#0D47A1] text-white font-bold'
-                              : 'hover:bg-[#E3F2FD] text-[#17365D]'
-                          }`}
-                        >
-                          <span>Tổ trưởng {grp.name}</span>
-                          <span
-                            className={
-                              isSelected ? 'text-[#E3F2FD]' : 'text-[#FF8A00] font-semibold'
-                            }
+                    <div className="space-y-1.5 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectRole('GVCN')}
+                        className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${
+                          sessionRole.role === 'GVCN'
+                            ? 'bg-[#0D47A1] text-white font-bold'
+                            : 'hover:bg-[#E3F2FD] text-[#17365D]'
+                        }`}
+                      >
+                        <span>GVCN: Nguyễn Tiến Dương (Toàn quyền)</span>
+                      </button>
+
+                      <div className="pt-1 text-[11px] text-[#64748B] font-semibold px-1">
+                        Xem thử giao diện Tổ trưởng trực chéo:
+                      </div>
+                      {state.groups.map((grp) => {
+                        const targetGrp = state.groups.find(
+                          (g) => g.id === grp.dutyTargetGroupId
+                        );
+                        return (
+                          <button
+                            key={grp.id}
+                            type="button"
+                            onClick={() => handleSelectRole('TO_TRUONG', grp.id)}
+                            className="w-full text-left px-3 py-1.5 rounded-lg transition-colors flex items-center justify-between hover:bg-[#E3F2FD] text-[#17365D]"
                           >
-                            Trực chấm {targetGrp?.name || 'Tổ khác'}
-                          </span>
-                        </button>
-                      );
-                    })}
+                            <span>Tổ trưởng {grp.name}</span>
+                            <span className="text-[#FF8A00] font-semibold">
+                              Trực chấm {targetGrp?.name || 'Tổ khác'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {/* Notification Bell */}
             <div className="relative">
@@ -428,27 +422,16 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({
                 </div>
               </div>
 
-              {/* Account / Settings Quick Actions */}
-              {firebaseUser ? (
-                <button
-                  type="button"
-                  onClick={logoutUser}
-                  className="p-2 rounded-lg border border-[#D7EAFE] text-[#17365D] hover:bg-[#E3F2FD] text-xs flex items-center gap-1"
-                  title={`Đã đăng nhập: ${firebaseUser.email}. Nhấn để đăng xuất`}
-                >
-                  <LogOut className="w-4 h-4 text-[#0D47A1]" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={loginWithGoogle}
-                  className="px-2.5 py-1.5 rounded-lg bg-[#0D47A1] text-white hover:bg-[#17365D] text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap"
-                  title="Đăng nhập Google để đồng bộ dữ liệu lên Cloud SQL"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Đăng nhập</span>
-                </button>
-              )}
+              {/* Session Logout Button */}
+              <button
+                type="button"
+                onClick={logoutSession}
+                className="px-3 py-1.5 rounded-lg border border-[#D7EAFE] bg-white hover:bg-[#FEF2F2] hover:border-[#FECACA] text-[#DC2626] text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                title="Đăng xuất để quay về Cửa sổ Đăng nhập"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Đăng xuất</span>
+              </button>
             </div>
           </div>
         </div>
@@ -512,10 +495,10 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({
             {sessionRole.role === 'TO_TRUONG' && (
               <button
                 type="button"
-                onClick={() => handleSelectRole('GVCN')}
-                className="text-xs font-bold text-[#0D47A1] underline hover:text-[#FF8A00]"
+                onClick={logoutSession}
+                className="text-xs font-bold text-[#DC2626] underline hover:text-[#0D47A1]"
               >
-                Quay lại quyền GVCN Nguyễn Tiến Dương
+                Đăng xuất tài khoản Tổ trưởng
               </button>
             )}
             {state.isDemoMode && sessionRole.role !== 'TO_TRUONG' && (

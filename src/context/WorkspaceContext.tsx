@@ -27,6 +27,7 @@ import {
   FinanceCategory,
   FinanceTransaction,
   ModuleKey,
+  RoleAccountCredentials,
   SchoolInfo,
   SchoolYearInfo,
   SemesterInfo,
@@ -38,11 +39,20 @@ import {
 import {
   createDemoWorkspaceState,
   createEmptyRealWorkspaceState,
+  getDefaultAuthCredentials,
 } from '../services/demoData.ts';
 import { calculateNextMultiplier, toISODate } from '../utils/calculations.ts';
 
 interface WorkspaceContextValue {
   state: WorkspaceState;
+  isAuthenticated: boolean;
+  loginWithCredentials: (
+    mode: 'GVCN' | 'TO_TRUONG',
+    username: string,
+    password: string
+  ) => { ok: boolean; error?: string };
+  logoutSession: () => void;
+  updateAuthCredentials: (creds: RoleAccountCredentials) => void;
   activeModule: ModuleKey;
   setActiveModule: (mod: ModuleKey) => void;
   sessionRole: ActiveSessionRole;
@@ -136,6 +146,7 @@ interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = 'thanh_hoa_class_manager_v1';
+const SESSION_AUTH_KEY = 'thanh_hoa_auth_session_v1';
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -146,7 +157,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.school && Array.isArray(parsed.students)) {
-          return parsed;
+          return {
+            ...parsed,
+            authCredentials:
+              parsed.authCredentials || getDefaultAuthCredentials(),
+          };
         }
       }
     } catch (e) {
@@ -155,10 +170,50 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
     return createDemoWorkspaceState();
   });
 
-  const [activeModule, setActiveModuleState] = useState<ModuleKey>('dashboard');
-  const [sessionRole, setSessionRoleState] = useState<ActiveSessionRole>({
-    role: 'GVCN',
-    actorName: 'Nguyễn Tiến Dương',
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_AUTH_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return Boolean(parsed?.isAuthenticated);
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  });
+
+  const [activeModule, setActiveModuleState] = useState<ModuleKey>(() => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_AUTH_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.sessionRole?.role === 'TO_TRUONG') {
+          return 'competition';
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return 'dashboard';
+  });
+
+  const [sessionRole, setSessionRoleState] = useState<ActiveSessionRole>(() => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_AUTH_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.sessionRole) {
+          return parsed.sessionRole;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return {
+      role: 'GVCN',
+      actorName: 'Nguyễn Tiến Dương',
+    };
   });
 
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
@@ -195,6 +250,14 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
   // Yêu cầu 6.1: "Chỉ hiển thị danh sách tổ được chấm thi đua ở tài khoản của tổ trưởng được phân trực, các chức năng phân hệ khác tổ trưởng không được quyền xem"
   const setSessionRole = (newRole: ActiveSessionRole) => {
     setSessionRoleState(newRole);
+    try {
+      sessionStorage.setItem(
+        SESSION_AUTH_KEY,
+        JSON.stringify({ isAuthenticated: true, sessionRole: newRole })
+      );
+    } catch {
+      // ignore
+    }
     if (newRole.role === 'TO_TRUONG') {
       setActiveModuleState('competition');
       showToast(
@@ -204,6 +267,123 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
     } else {
       showToast(`Đã chuyển vai trò làm việc: ${newRole.actorName} (${newRole.role})`, 'info');
     }
+  };
+
+  const loginWithCredentials = (
+    mode: 'GVCN' | 'TO_TRUONG',
+    username: string,
+    password: string
+  ): { ok: boolean; error?: string } => {
+    const creds = state.authCredentials || getDefaultAuthCredentials();
+    const cleanUser = username.trim().toLowerCase();
+    const cleanPass = password.trim();
+
+    if (mode === 'GVCN') {
+      if (
+        cleanUser === creds.gvcnUsername.trim().toLowerCase() &&
+        cleanPass === creds.gvcnPassword
+      ) {
+        const currentClass =
+          state.classes.find((c) => c.id === state.currentClassId) ||
+          state.classes[0];
+        const roleObj: ActiveSessionRole = {
+          role: 'GVCN',
+          actorName: currentClass?.homeroomTeacher || 'Nguyễn Tiến Dương',
+        };
+        setSessionRoleState(roleObj);
+        setActiveModuleState('dashboard');
+        setIsAuthenticated(true);
+        try {
+          sessionStorage.setItem(
+            SESSION_AUTH_KEY,
+            JSON.stringify({ isAuthenticated: true, sessionRole: roleObj })
+          );
+        } catch {
+          // ignore
+        }
+        showToast(
+          `Xin chào GVCN ${roleObj.actorName}! Đã đăng nhập vào hệ thống quản lý lớp học.`,
+          'success'
+        );
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        error: 'Tài khoản hoặc mật khẩu Giáo viên chủ nhiệm không chính xác.',
+      };
+    } else {
+      const matched = creds.groupLeaderAccounts.find(
+        (acc) =>
+          acc.username.trim().toLowerCase() === cleanUser &&
+          acc.password === cleanPass
+      );
+      if (matched) {
+        const grp = state.groups.find((g) => g.id === matched.groupId);
+        const targetGrp = state.groups.find(
+          (g) => g.id === grp?.dutyTargetGroupId
+        );
+        const leader = state.students.find(
+          (s) => s.id === grp?.leaderStudentId
+        );
+        const actorLabel = leader
+          ? `${leader.fullName.replace(' (Demo)', '')} (Tổ trưởng ${grp?.name || ''})`
+          : `Tổ trưởng ${grp?.name || ''}`;
+        const roleObj: ActiveSessionRole = {
+          role: 'TO_TRUONG',
+          actorName: actorLabel,
+          groupId: matched.groupId,
+        };
+        setSessionRoleState(roleObj);
+        setActiveModuleState('competition');
+        setIsAuthenticated(true);
+        try {
+          sessionStorage.setItem(
+            SESSION_AUTH_KEY,
+            JSON.stringify({ isAuthenticated: true, sessionRole: roleObj })
+          );
+        } catch {
+          // ignore
+        }
+        showToast(
+          `Đăng nhập thành công: ${actorLabel} — Chấm trực thi đua ${
+            targetGrp?.name || 'Tổ được phân công'
+          }!`,
+          'success'
+        );
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        error: 'Tài khoản hoặc mật khẩu Tổ trưởng trực thi đua không chính xác.',
+      };
+    }
+  };
+
+  const logoutSession = () => {
+    setIsAuthenticated(false);
+    try {
+      sessionStorage.removeItem(SESSION_AUTH_KEY);
+    } catch {
+      // ignore
+    }
+    showToast('Đã đăng xuất khỏi phiên làm việc.', 'info');
+  };
+
+  const updateAuthCredentials = (newCreds: RoleAccountCredentials) => {
+    const log = createLogItem(
+      'Cài đặt & Quản trị',
+      'Cập nhật tài khoản & mật khẩu đăng nhập',
+      'GVCN cập nhật thông tin tài khoản đăng nhập của GVCN và 4 Tổ trưởng trực thi đua'
+    );
+    setState((prev) => ({
+      ...prev,
+      authCredentials: newCreds,
+      auditLogs: [log, ...prev.auditLogs],
+    }));
+    showToast(
+      'Đã lưu cấu hình tài khoản & mật khẩu đăng nhập và đồng bộ lên Supabase!',
+      'success'
+    );
   };
 
   const setActiveModule = (mod: ModuleKey) => {
@@ -1224,6 +1404,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
     <WorkspaceContext.Provider
       value={{
         state,
+        isAuthenticated,
+        loginWithCredentials,
+        logoutSession,
+        updateAuthCredentials,
         activeModule,
         setActiveModule,
         sessionRole,

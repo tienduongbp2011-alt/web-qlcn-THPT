@@ -18,21 +18,21 @@ import {
 } from 'lucide-react';
 import { useWorkspace } from '../../context/WorkspaceContext.tsx';
 import { SUPABASE_SETUP_SQL, SUPABASE_URL } from '../../lib/supabase.ts';
+import { getDefaultAuthCredentials } from '../../services/demoData.ts';
 
 export const SettingsPage: React.FC = () => {
   const {
     state,
     sessionRole,
     setSessionRole,
-    firebaseUser,
+    logoutSession,
+    updateAuthCredentials,
     supabaseStatus,
     supabaseStatusDetail,
     lastSupabaseSyncAt,
     syncNowWithSupabase,
     pullFromSupabase,
     showToast,
-    loginWithGoogle,
-    logoutUser,
     clearDemoData,
     resetDemoData,
     importFullWorkspaceJson,
@@ -46,6 +46,13 @@ export const SettingsPage: React.FC = () => {
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
   const [showSqlModal, setShowSqlModal] = useState(true);
   const [copiedSql, setCopiedSql] = useState(false);
+
+  const initialCreds = state.authCredentials || getDefaultAuthCredentials();
+  const [gvcnUsername, setGvcnUsername] = useState(initialCreds.gvcnUsername);
+  const [gvcnPassword, setGvcnPassword] = useState(initialCreds.gvcnPassword);
+  const [leaderAccounts, setLeaderAccounts] = useState(
+    initialCreds.groupLeaderAccounts
+  );
 
   // School Form
   const [schoolName, setSchoolName] = useState(state.school.name);
@@ -67,6 +74,19 @@ export const SettingsPage: React.FC = () => {
   // New Finance Category Form
   const [newFinCatName, setNewFinCatName] = useState('');
   const [newFinCatType, setNewFinCatType] = useState<'THU' | 'CHI'>('CHI');
+
+  const handleSaveCredentials = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateAuthCredentials({
+      gvcnUsername: gvcnUsername.trim() || 'gvcn',
+      gvcnPassword: gvcnPassword.trim() || '123456',
+      groupLeaderAccounts: leaderAccounts.map((acc, idx) => ({
+        groupId: acc.groupId,
+        username: acc.username.trim() || `to${idx + 1}`,
+        password: acc.password.trim() || '123456',
+      })),
+    });
+  };
 
   const handleSaveSchool = (e: React.FormEvent) => {
     e.preventDefault();
@@ -404,108 +424,153 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Row 2: Phân quyền 4 vai trò & Quản lý dữ liệu DEMO / Cloud SQL */}
+      {/* Row 2: Quản lý Tài khoản & Mật khẩu Đăng nhập + Kết nối Supabase */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="crystal-card rounded-2xl p-5 space-y-4 text-xs">
-          <div className="flex items-center gap-2 border-b border-[#D7EAFE] pb-2.5">
-            <Shield className="w-5 h-5 text-[#0D47A1]" />
-            <h3 className="text-base font-bold text-[#0D47A1]">
-              3. Phân quyền Người dùng (4 Vai trò Chuẩn THPT)
-            </h3>
+        <form
+          onSubmit={handleSaveCredentials}
+          className="crystal-card rounded-2xl p-5 space-y-4 text-xs"
+        >
+          <div className="flex items-center justify-between border-b border-[#D7EAFE] pb-2.5">
+            <div className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-[#0D47A1]" />
+              <h3 className="text-base font-bold text-[#0D47A1]">
+                3. Quản lý Tài khoản & Mật khẩu Đăng nhập (GVCN & 4 Tổ trưởng)
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={logoutSession}
+              className="px-2.5 py-1 rounded-lg border border-[#D7EAFE] bg-white text-[#DC2626] font-bold hover:bg-[#FEF2F2]"
+            >
+              Mở Cửa sổ Đăng nhập
+            </button>
           </div>
 
           <p className="text-[#64748B]">
-            Chọn vai trò bên dưới để kiểm tra phân quyền trực tiếp trên ứng dụng (Đặc biệt: Tổ trưởng chỉ được xem và chấm điểm tổ được phân trực).
+            Cấp phát tên tài khoản và mật khẩu cho GVCN (vào thẳng Trang chính) và 4 Tổ trưởng trực thi đua (vào thẳng trang Chấm điểm tổ được phân trực).
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              onClick={() =>
-                setSessionRole({
-                  role: 'ADMIN',
-                  actorName: 'Quản trị hệ thống THPT Thanh Hòa',
-                })
-              }
-              className={`p-3 rounded-xl border text-left ${
-                sessionRole.role === 'ADMIN'
-                  ? 'bg-[#0D47A1] text-white border-[#0D47A1]'
-                  : 'bg-[#F4FAFF] border-[#D7EAFE] text-[#17365D]'
-              }`}
-            >
-              <div className="font-bold">1. Quản trị hệ thống</div>
-              <div className="text-[11px] opacity-80 mt-0.5">
-                Quản lý trường, năm học, sao lưu & phân quyền toàn trường
+          {/* Tài khoản GVCN */}
+          <div className="p-3 rounded-xl bg-[#F4FAFF] border border-[#D7EAFE] space-y-2">
+            <div className="font-bold text-[#0D47A1]">
+              1. Tài khoản Giáo viên Chủ nhiệm (Toàn quyền 8 phân hệ):
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block font-semibold text-[#17365D] mb-1">
+                  Tên đăng nhập GVCN
+                </label>
+                <input
+                  type="text"
+                  value={gvcnUsername}
+                  onChange={(e) => setGvcnUsername(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-[#D7EAFE] bg-white font-mono font-bold text-[#0D47A1]"
+                />
               </div>
-            </button>
+              <div>
+                <label className="block font-semibold text-[#17365D] mb-1">
+                  Mật khẩu GVCN
+                </label>
+                <input
+                  type="text"
+                  value={gvcnPassword}
+                  onChange={(e) => setGvcnPassword(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-[#D7EAFE] bg-white font-mono font-bold text-[#17365D]"
+                />
+              </div>
+            </div>
+          </div>
 
-            <button
-              type="button"
-              onClick={() =>
-                setSessionRole({
-                  role: 'GVCN',
-                  actorName: 'Nguyễn Tiến Dương',
-                })
-              }
-              className={`p-3 rounded-xl border text-left ${
-                sessionRole.role === 'GVCN'
-                  ? 'bg-[#0D47A1] text-white border-[#0D47A1]'
-                  : 'bg-[#F4FAFF] border-[#D7EAFE] text-[#17365D]'
-              }`}
-            >
-              <div className="font-bold">
-                2. Giáo viên chủ nhiệm (Nguyễn Tiến Dương)
-              </div>
-              <div className="text-[11px] opacity-80 mt-0.5">
-                Toàn quyền quản lý 8 phân hệ của Lớp 10A3
-              </div>
-            </button>
+          {/* 4 Tài khoản Tổ trưởng */}
+          <div className="space-y-2">
+            <div className="font-bold text-[#0D47A1]">
+              2. Tài khoản 4 Tổ trưởng trực thi đua (Vào thẳng trang Chấm điểm tổ trực):
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {state.groups.map((grp, idx) => {
+                const acc =
+                  leaderAccounts.find((a) => a.groupId === grp.id) || {
+                    groupId: grp.id,
+                    username: `to${idx + 1}`,
+                    password: '123456',
+                  };
+                const targetGrp = state.groups.find(
+                  (g) => g.id === grp.dutyTargetGroupId
+                );
+                return (
+                  <div
+                    key={grp.id}
+                    className="p-2.5 rounded-xl bg-[#F4FAFF] border border-[#D7EAFE] space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-[#17365D]">
+                        Tổ trưởng {grp.name}
+                      </span>
+                      <span className="text-[11px] font-bold text-[#FF8A00]">
+                        Chấm: {targetGrp?.name || 'Tổ trực'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <label className="block text-[10px] text-[#64748B]">
+                          Tài khoản
+                        </label>
+                        <input
+                          type="text"
+                          value={acc.username}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setLeaderAccounts((prev) =>
+                              prev.map((item) =>
+                                item.groupId === grp.id
+                                  ? { ...item, username: val }
+                                  : item
+                              )
+                            );
+                          }}
+                          className="w-full px-2 py-1 rounded border border-[#D7EAFE] bg-white font-mono font-bold text-[#0D47A1]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-[#64748B]">
+                          Mật khẩu
+                        </label>
+                        <input
+                          type="text"
+                          value={acc.password}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setLeaderAccounts((prev) =>
+                              prev.map((item) =>
+                                item.groupId === grp.id
+                                  ? { ...item, password: val }
+                                  : item
+                              )
+                            );
+                          }}
+                          className="w-full px-2 py-1 rounded border border-[#D7EAFE] bg-white font-mono font-bold text-[#17365D]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#D7EAFE]">
+            <div className="text-[11px] text-[#64748B]">
+              Tài khoản và mật khẩu sẽ được đồng bộ trực tiếp lên Supabase.
+            </div>
             <button
-              type="button"
-              onClick={() =>
-                setSessionRole({
-                  role: 'GV_PHAN_CONG',
-                  actorName: 'Giáo viên bộ môn phối hợp',
-                })
-              }
-              className={`p-3 rounded-xl border text-left ${
-                sessionRole.role === 'GV_PHAN_CONG'
-                  ? 'bg-[#0D47A1] text-white border-[#0D47A1]'
-                  : 'bg-[#F4FAFF] border-[#D7EAFE] text-[#17365D]'
-              }`}
+              type="submit"
+              className="px-4 py-2 rounded-lg bg-[#0D47A1] text-white font-bold flex items-center gap-1.5 hover:bg-[#17365D]"
             >
-              <div className="font-bold">3. Giáo viên được phân công</div>
-              <div className="text-[11px] opacity-80 mt-0.5">
-                Phối hợp theo dõi chuyên cần, học tập và ghi nhận thi đua
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                const grp1 = state.groups[0];
-                setSessionRole({
-                  role: 'TO_TRUONG',
-                  actorName: 'Lê Hoàng Minh Quân (Tổ trưởng Tổ 1)',
-                  groupId: grp1?.id || 'group-1',
-                });
-              }}
-              className={`p-3 rounded-xl border text-left ${
-                sessionRole.role === 'TO_TRUONG'
-                  ? 'bg-[#0D47A1] text-white border-[#0D47A1]'
-                  : 'bg-[#F4FAFF] border-[#D7EAFE] text-[#17365D]'
-              }`}
-            >
-              <div className="font-bold">
-                4. Cán bộ lớp / Tổ trưởng trực thi đua
-              </div>
-              <div className="text-[11px] opacity-80 mt-0.5">
-                Chỉ hiển thị danh sách tổ được phân trực chấm & nút hoàn tác
-              </div>
+              <Save className="w-4 h-4" />
+              <span>Lưu Tài khoản & Mật khẩu</span>
             </button>
           </div>
-        </div>
+        </form>
 
         {/* Quản lý Cơ sở dữ liệu Supabase & Dữ liệu DEMO */}
         <div className="crystal-card rounded-2xl p-5 space-y-4 text-xs">

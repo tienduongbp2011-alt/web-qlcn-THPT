@@ -317,8 +317,19 @@ export interface AuditLogEntry {
   details: string;
 }
 
+export interface RoleAccountCredentials {
+  gvcnUsername: string;
+  gvcnPassword: string;
+  groupLeaderAccounts: {
+    groupId: string;
+    username: string;
+    password: string;
+  }[];
+}
+
 export interface WorkspaceState {
   isDemoMode: boolean;
+  authCredentials?: RoleAccountCredentials;
   school: SchoolInfo;
   schoolYears: SchoolYearInfo[];
   semesters: SemesterInfo[];
@@ -343,3 +354,4 @@ export interface WorkspaceState {
   tasks: TaskItem[];
   auditLogs: AuditLogEntry[];
 }
+

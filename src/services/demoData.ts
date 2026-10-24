@@ -9,6 +9,7 @@ import {
   CompetitionRecord,
   FinanceCategory,
   FinanceTransaction,
+  RoleAccountCredentials,
   SchoolInfo,
   SchoolYearInfo,
   SemesterInfo,
@@ -19,6 +20,19 @@ import {
   WorkspaceState,
 } from '../types/index.ts';
 import { toISODate } from '../utils/calculations.ts';
+
+export function getDefaultAuthCredentials(): RoleAccountCredentials {
+  return {
+    gvcnUsername: 'gvcn',
+    gvcnPassword: '123456',
+    groupLeaderAccounts: [
+      { groupId: 'group-1', username: 'to1', password: '123456' },
+      { groupId: 'group-2', username: 'to2', password: '123456' },
+      { groupId: 'group-3', username: 'to3', password: '123456' },
+      { groupId: 'group-4', username: 'to4', password: '123456' },
+    ],
+  };
+}
 
 export function getDefaultCriteria(): CompetitionCriterion[] {
   return [
@@ -1235,6 +1249,7 @@ export function createDemoWorkspaceState(): WorkspaceState {
 
   return {
     isDemoMode: true,
+    authCredentials: getDefaultAuthCredentials(),
     school,
     schoolYears,
     semesters,
