@@ -7,6 +7,13 @@ import {
 } from 'firebase/auth';
 import { auth, googleAuthProvider } from '../lib/firebase.ts';
 import {
+  DEFAULT_WORKSPACE_ID,
+  loadWorkspaceFromSupabase,
+  saveWorkspaceToSupabase,
+  supabase,
+  SupabaseConnectionState,
+} from '../lib/supabase.ts';
+import {
   ActiveSessionRole,
   AttendanceRecord,
   AuditLogEntry,
@@ -43,6 +50,11 @@ interface WorkspaceContextValue {
   firebaseUser: User | null;
   authLoading: boolean;
   syncMessage: string | null;
+  supabaseStatus: SupabaseConnectionState;
+  supabaseStatusDetail: string;
+  lastSupabaseSyncAt: string | null;
+  syncNowWithSupabase: () => Promise<void>;
+  pullFromSupabase: () => Promise<void>;
   toastMessage: { text: string; type: 'success' | 'error' | 'info' } | null;
   showToast: (text: string, type?: 'success' | 'error' | 'info') => void;
   loginWithGoogle: () => Promise<void>;
@@ -153,12 +165,21 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [supabaseStatus, setSupabaseStatus] =
+    useState<SupabaseConnectionState>('CONNECTING');
+  const [supabaseStatusDetail, setSupabaseStatusDetail] = useState<string>(
+    'Đang kết nối tới cơ sở dữ liệu Supabase...'
+  );
+  const [lastSupabaseSyncAt, setLastSupabaseSyncAt] = useState<string | null>(
+    null
+  );
   const [toastMessage, setToastMessage] = useState<{
     text: string;
     type: 'success' | 'error' | 'info';
   } | null>(null);
 
   const isInitialCloudLoadDone = useRef(false);
+  const isApplyingRemoteUpdate = useRef(false);
 
   const showToast = (
     text: string,
@@ -197,7 +218,85 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
     setActiveModuleState(mod);
   };
 
-  // Listen to Firebase Auth state
+  // 1. Kết nối và tải dữ liệu từ Supabase ngay khi mở ứng dụng
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initSupabaseSync() {
+      setSupabaseStatus('CONNECTING');
+      setSupabaseStatusDetail('Đang kiểm tra kết nối Supabase...');
+
+      const loaded = await loadWorkspaceFromSupabase(DEFAULT_WORKSPACE_ID);
+      if (!isMounted) return;
+
+      setSupabaseStatus(loaded.status);
+      setSupabaseStatusDetail(loaded.message);
+
+      if (loaded.status === 'CONNECTED') {
+        if (loaded.state && loaded.state.school && Array.isArray(loaded.state.students)) {
+          isApplyingRemoteUpdate.current = true;
+          setState(loaded.state);
+          if (loaded.updatedAt) {
+            setLastSupabaseSyncAt(loaded.updatedAt);
+          }
+          showToast('Đã đồng bộ dữ liệu lớp học từ Supabase!', 'info');
+        } else {
+          // Chưa có dữ liệu trên bảng Supabase -> Đẩy dữ liệu hiện tại lên lần đầu
+          const pushed = await saveWorkspaceToSupabase(
+            state,
+            DEFAULT_WORKSPACE_ID,
+            firebaseUser?.email || 'tienduongbp2011@gmail.com'
+          );
+          if (isMounted) {
+            setSupabaseStatus(pushed.status);
+            setSupabaseStatusDetail(pushed.message);
+            if (pushed.updatedAt) {
+              setLastSupabaseSyncAt(pushed.updatedAt);
+            }
+          }
+        }
+      }
+
+      isInitialCloudLoadDone.current = true;
+    }
+
+    initSupabaseSync();
+
+    // Lắng nghe thay đổi Realtime từ Supabase (khi Tổ trưởng hoặc máy khác cập nhật)
+    const channel = supabase
+      .channel('supabase_workspace_realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'workspace_snapshots',
+          filter: `uid=eq.${DEFAULT_WORKSPACE_ID}`,
+        },
+        (payload: any) => {
+          const newRecord = payload?.new;
+          if (
+            newRecord &&
+            newRecord.state_json &&
+            newRecord.state_json.school
+          ) {
+            isApplyingRemoteUpdate.current = true;
+            setState(newRecord.state_json as WorkspaceState);
+            setLastSupabaseSyncAt(newRecord.updated_at || new Date().toISOString());
+            setSupabaseStatus('CONNECTED');
+            setSupabaseStatusDetail('Đã cập nhật dữ liệu thời gian thực từ Supabase');
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Listen to Firebase Auth state (tùy chọn bổ sung)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user);
@@ -205,42 +304,18 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
         try {
           const token = await user.getIdToken();
           setAuthToken(token);
-          const res = await fetch('/api/workspace', {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.state && data.state.school) {
-              setState(data.state);
-              showToast('Đã đồng bộ dữ liệu lớp học từ cơ sở dữ liệu đám mây.', 'info');
-            } else {
-              // Save current state to cloud for first-time user
-              await fetch('/api/workspace', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ state }),
-              });
-            }
-          }
-          isInitialCloudLoadDone.current = true;
         } catch (err) {
-          console.error('Failed to sync workspace from backend:', err);
+          console.error('Failed to get token:', err);
         }
       } else {
         setAuthToken(null);
-        isInitialCloudLoadDone.current = false;
       }
       setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  // Save to localStorage and sync to PostgreSQL backend if logged in
+  // Tự động lưu vào localStorage và đồng bộ lên Supabase mỗi khi dữ liệu thay đổi
   useEffect(() => {
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
@@ -248,29 +323,81 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
       console.warn('Could not save state to localStorage:', e);
     }
 
-    if (firebaseUser && authToken && isInitialCloudLoadDone.current) {
-      const timer = setTimeout(async () => {
-        try {
-          setSyncMessage('Đang lưu dữ liệu...');
-          const token = await firebaseUser.getIdToken();
-          await fetch('/api/workspace', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ state }),
-          });
-          setSyncMessage('Đã lưu đám mây');
-          setTimeout(() => setSyncMessage(null), 2000);
-        } catch (e) {
-          console.error('Error syncing workspace state:', e);
-          setSyncMessage(null);
-        }
-      }, 600);
-      return () => clearTimeout(timer);
+    if (!isInitialCloudLoadDone.current) return;
+
+    if (isApplyingRemoteUpdate.current) {
+      isApplyingRemoteUpdate.current = false;
+      return;
     }
-  }, [state, firebaseUser, authToken]);
+
+    const timer = setTimeout(async () => {
+      setSyncMessage('Đang đồng bộ lên Supabase...');
+      const res = await saveWorkspaceToSupabase(
+        state,
+        DEFAULT_WORKSPACE_ID,
+        firebaseUser?.email || 'tienduongbp2011@gmail.com'
+      );
+      setSupabaseStatus(res.status);
+      setSupabaseStatusDetail(res.message);
+
+      if (res.status === 'CONNECTED') {
+        if (res.updatedAt) setLastSupabaseSyncAt(res.updatedAt);
+        setSyncMessage('Đã lưu trên Supabase');
+        setTimeout(() => setSyncMessage(null), 2200);
+      } else {
+        setSyncMessage(null);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [state, firebaseUser]);
+
+  const syncNowWithSupabase = async () => {
+    setSyncMessage('Đang đẩy dữ liệu lên Supabase...');
+    const res = await saveWorkspaceToSupabase(
+      state,
+      DEFAULT_WORKSPACE_ID,
+      firebaseUser?.email || 'tienduongbp2011@gmail.com'
+    );
+    setSupabaseStatus(res.status);
+    setSupabaseStatusDetail(res.message);
+    if (res.status === 'CONNECTED') {
+      if (res.updatedAt) setLastSupabaseSyncAt(res.updatedAt);
+      setSyncMessage('Đã lưu trên Supabase');
+      showToast('Đã đồng bộ toàn bộ dữ liệu lớp học lên Supabase thành công!', 'success');
+      setTimeout(() => setSyncMessage(null), 2500);
+    } else if (res.status === 'NEEDS_TABLE_SETUP') {
+      setSyncMessage(null);
+      showToast(
+        'Kết nối Supabase thành công! Hãy chạy lệnh SQL khởi tạo bảng lần đầu trong mục Cài đặt.',
+        'info'
+      );
+    } else {
+      setSyncMessage(null);
+      showToast(res.message, 'error');
+    }
+  };
+
+  const pullFromSupabase = async () => {
+    setSyncMessage('Đang tải dữ liệu từ Supabase...');
+    const loaded = await loadWorkspaceFromSupabase(DEFAULT_WORKSPACE_ID);
+    setSupabaseStatus(loaded.status);
+    setSupabaseStatusDetail(loaded.message);
+    setSyncMessage(null);
+
+    if (loaded.status === 'CONNECTED') {
+      if (loaded.state && loaded.state.school) {
+        isApplyingRemoteUpdate.current = true;
+        setState(loaded.state);
+        if (loaded.updatedAt) setLastSupabaseSyncAt(loaded.updatedAt);
+        showToast('Đã tải dữ liệu mới nhất từ Supabase về máy!', 'success');
+      } else {
+        showToast('Kết nối Supabase thành công nhưng chưa có bản lưu nào trên đám mây.', 'info');
+      }
+    } else {
+      showToast(loaded.message, loaded.status === 'NEEDS_TABLE_SETUP' ? 'info' : 'error');
+    }
+  };
 
   const loginWithGoogle = async () => {
     try {
@@ -1104,6 +1231,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({
         firebaseUser,
         authLoading,
         syncMessage,
+        supabaseStatus,
+        supabaseStatusDetail,
+        lastSupabaseSyncAt,
+        syncNowWithSupabase,
+        pullFromSupabase,
         toastMessage,
         showToast,
         loginWithGoogle,

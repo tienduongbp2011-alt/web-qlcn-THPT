@@ -90,6 +90,8 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({
     setSessionRole,
     firebaseUser,
     syncMessage,
+    supabaseStatus,
+    syncNowWithSupabase,
     toastMessage,
     loginWithGoogle,
     logoutUser,
@@ -451,18 +453,47 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({
           </div>
         </div>
 
-        {/* Demo Mode Banner / Cloud Status Bar */}
+        {/* Demo Mode Banner / Supabase Cloud Status Bar */}
         <div className="bg-[#E3F2FD]/80 border-t border-[#D7EAFE] px-4 lg:px-6 py-1.5 text-xs flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[#17365D]">
+          <div className="flex flex-wrap items-center gap-2 text-[#17365D]">
             <Database className="w-3.5 h-3.5 text-[#0D47A1]" />
             {state.isDemoMode ? (
               <span>
-                Đang hiển thị <strong className="text-[#0D47A1]">DỮ LIỆU DEMO</strong> tổng hợp phục vụ chạy thử nghiệm Lớp {currentClass?.name || '10A3'}.
+                Đang hiển thị <strong className="text-[#0D47A1]">DỮ LIỆU DEMO</strong> Lớp {currentClass?.name || '10A3'}.
               </span>
             ) : (
               <span>
-                Đang làm việc với <strong className="text-[#16A34A]">DỮ LIỆU THỰC TẾ</strong> của Lớp {currentClass?.name || '10A3'}.
+                Đang làm việc với <strong className="text-[#16A34A]">DỮ LIỆU THỰC TẾ</strong> Lớp {currentClass?.name || '10A3'}.
               </span>
+            )}
+            <span aria-hidden="true">·</span>
+            {supabaseStatus === 'CONNECTED' && (
+              <span className="text-[#16A34A] font-bold">
+                Supabase: Đã kết nối & Đồng bộ tự động
+              </span>
+            )}
+            {supabaseStatus === 'CONNECTING' && (
+              <span className="text-[#0D47A1] font-semibold">
+                Supabase: Đang kết nối...
+              </span>
+            )}
+            {supabaseStatus === 'NEEDS_TABLE_SETUP' && (
+              <button
+                type="button"
+                onClick={() => setActiveModule('settings')}
+                className="text-[#FF8A00] font-bold underline hover:text-[#0D47A1]"
+              >
+                Supabase: Đã kết nối máy chủ — Nhấn vào đây để lấy mã SQL tạo bảng lần đầu
+              </button>
+            )}
+            {supabaseStatus === 'ERROR' && (
+              <button
+                type="button"
+                onClick={() => setActiveModule('settings')}
+                className="text-[#DC2626] font-bold underline"
+              >
+                Supabase: Kiểm tra cấu hình kết nối
+              </button>
             )}
             {syncMessage && (
               <span className="text-[#0D47A1] font-semibold">· {syncMessage}</span>
@@ -470,6 +501,14 @@ export const MainLayout: React.FC<{ children: React.ReactNode }> = ({
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={syncNowWithSupabase}
+              className="text-xs font-bold text-[#0D47A1] hover:underline"
+              title="Đẩy dữ liệu hiện tại lên cơ sở dữ liệu Supabase ngay lập tức"
+            >
+              Đồng bộ Supabase ngay
+            </button>
             {sessionRole.role === 'TO_TRUONG' && (
               <button
                 type="button"

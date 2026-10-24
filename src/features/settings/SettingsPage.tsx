@@ -1,10 +1,12 @@
 import React, { useRef, useState } from 'react';
 import {
   Building2,
+  Check,
+  CloudUpload,
+  Copy,
   Database,
   Download,
   History,
-  KeyRound,
   LogIn,
   LogOut,
   Plus,
@@ -15,6 +17,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { useWorkspace } from '../../context/WorkspaceContext.tsx';
+import { SUPABASE_SETUP_SQL, SUPABASE_URL } from '../../lib/supabase.ts';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -22,6 +25,12 @@ export const SettingsPage: React.FC = () => {
     sessionRole,
     setSessionRole,
     firebaseUser,
+    supabaseStatus,
+    supabaseStatusDetail,
+    lastSupabaseSyncAt,
+    syncNowWithSupabase,
+    pullFromSupabase,
+    showToast,
     loginWithGoogle,
     logoutUser,
     clearDemoData,
@@ -35,6 +44,8 @@ export const SettingsPage: React.FC = () => {
   } = useWorkspace();
 
   const backupFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [showSqlModal, setShowSqlModal] = useState(true);
+  const [copiedSql, setCopiedSql] = useState(false);
 
   // School Form
   const [schoolName, setSchoolName] = useState(state.school.name);
@@ -496,51 +507,128 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Quản lý Dữ liệu DEMO & Xác thực tài khoản */}
+        {/* Quản lý Cơ sở dữ liệu Supabase & Dữ liệu DEMO */}
         <div className="crystal-card rounded-2xl p-5 space-y-4 text-xs">
-          <div className="flex items-center gap-2 border-b border-[#D7EAFE] pb-2.5">
-            <Database className="w-5 h-5 text-[#0D47A1]" />
-            <h3 className="text-base font-bold text-[#0D47A1]">
-              4. Quản lý Chế độ Dữ liệu DEMO & Tài khoản Đám mây
-            </h3>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-[#F4FAFF] border border-[#D7EAFE] space-y-2">
-            <div className="font-bold text-[#17365D]">
-              Trạng thái tài khoản xác thực:
+          <div className="flex items-center justify-between border-b border-[#D7EAFE] pb-2.5">
+            <div className="flex items-center gap-2">
+              <Database className="w-5 h-5 text-[#0D47A1]" />
+              <h3 className="text-base font-bold text-[#0D47A1]">
+                4. Kết nối Cơ sở dữ liệu Supabase & Dữ liệu DEMO
+              </h3>
             </div>
-            {firebaseUser ? (
-              <div className="flex items-center justify-between">
-                <span className="text-[#16A34A] font-bold">
-                  Đã đăng nhập: {firebaseUser.email}
-                </span>
-                <button
-                  type="button"
-                  onClick={logoutUser}
-                  className="px-3 py-1.5 rounded-lg border border-[#D7EAFE] bg-white font-bold text-[#DC2626] flex items-center gap-1"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Đăng xuất</span>
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <span className="text-[#64748B]">
-                  Chưa đăng nhập tài khoản Google (Đang lưu cục bộ trên trình duyệt)
-                </span>
-                <button
-                  type="button"
-                  onClick={loginWithGoogle}
-                  className="px-3 py-1.5 rounded-lg bg-[#0D47A1] text-white font-bold flex items-center gap-1"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>Đăng nhập Google</span>
-                </button>
-              </div>
-            )}
+            <span
+              className={`font-bold ${
+                supabaseStatus === 'CONNECTED'
+                  ? 'text-[#16A34A]'
+                  : supabaseStatus === 'NEEDS_TABLE_SETUP'
+                  ? 'text-[#FF8A00]'
+                  : 'text-[#0D47A1]'
+              }`}
+            >
+              {supabaseStatus === 'CONNECTED'
+                ? '● Đã kết nối Supabase'
+                : supabaseStatus === 'NEEDS_TABLE_SETUP'
+                ? '● Cần tạo bảng lần đầu'
+                : supabaseStatus === 'CONNECTING'
+                ? '● Đang kết nối...'
+                : '● Lỗi kết nối'}
+            </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2">
+          <div className="p-3.5 rounded-xl bg-[#F4FAFF] border border-[#D7EAFE] space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-bold text-[#17365D]">
+                  Máy chủ Supabase Project:
+                </div>
+                <div className="text-[#0D47A1] font-mono text-[11px] break-all">
+                  {SUPABASE_URL}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={syncNowWithSupabase}
+                  className="px-3 py-1.5 rounded-lg bg-[#0D47A1] text-white font-bold flex items-center gap-1.5 hover:bg-[#17365D]"
+                >
+                  <CloudUpload className="w-3.5 h-3.5" />
+                  <span>Đẩy dữ liệu lên Supabase</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={pullFromSupabase}
+                  className="px-3 py-1.5 rounded-lg border border-[#0D47A1] bg-white text-[#0D47A1] font-bold flex items-center gap-1.5 hover:bg-[#E3F2FD]"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Tải từ Supabase về</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="text-[#17365D] pt-1 border-t border-[#D7EAFE]">
+              Trạng thái: <strong>{supabaseStatusDetail}</strong>
+              {lastSupabaseSyncAt && (
+                <span className="text-[#64748B] ml-2">
+                  (Đồng bộ lúc: {new Date(lastSupabaseSyncAt).toLocaleString('vi-VN')})
+                </span>
+              )}
+            </div>
+
+            {/* Hướng dẫn & Nút copy mã SQL tạo bảng trên Supabase */}
+            <div className="pt-2 border-t border-[#D7EAFE] space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[#64748B]">
+                  Nếu Project Supabase của bạn mới tạo và chưa có bảng dữ liệu:
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
+                      setCopiedSql(true);
+                      showToast(
+                        'Đã sao chép lệnh SQL! Hãy dán vào mục SQL Editor trên Supabase rồi nhấn RUN.',
+                        'success'
+                      );
+                      setTimeout(() => setCopiedSql(false), 3000);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-[#16A34A] text-white font-bold flex items-center gap-1.5 hover:opacity-90"
+                  >
+                    {copiedSql ? (
+                      <Check className="w-3.5 h-3.5" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {copiedSql
+                        ? 'Đã chép lệnh SQL!'
+                        : 'Sao chép mã SQL khởi tạo bảng Supabase'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSqlModal(!showSqlModal)}
+                    className="px-2.5 py-1.5 rounded-lg border border-[#D7EAFE] bg-white text-[#0D47A1] font-bold hover:bg-[#E3F2FD]"
+                  >
+                    {showSqlModal ? 'Ẩn mã SQL' : 'Xem mã SQL'}
+                  </button>
+                </div>
+              </div>
+
+              {showSqlModal && (
+                <div className="mt-2 space-y-1.5">
+                  <div className="text-[11px] text-[#0D47A1] font-semibold">
+                    Hướng dẫn: Vào trang quản trị Supabase &rarr; mục <strong>SQL Editor</strong> (menu trái) &rarr; nhấn <strong>New Query</strong> &rarr; Dán đoạn mã dưới đây vào và nhấn <strong>RUN</strong>:
+                  </div>
+                  <pre className="p-3 rounded-lg bg-[#0F172A] text-[#E2E8F0] font-mono text-[11px] max-h-56 overflow-y-auto whitespace-pre-wrap">
+                    {SUPABASE_SETUP_SQL}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <button
               type="button"
               onClick={clearDemoData}
